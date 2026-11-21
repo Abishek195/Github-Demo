@@ -1,0 +1,526 @@
+<title>Smart Photo Nudge</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a working phone on the left, Claude's live reasoning on the right, a before/after strip below. */
+:root {
+  --bg: #eef2ef;
+  --surface: #ffffff;
+  --ink: #17231f;
+  --muted: #5d6b66;
+  --line: #d6dfdb;
+  --accent: #0d7a5f;
+  --accent-soft: #d8efe6;
+  --wall: #ece5dc;
+  --bubble-in: #ffffff;
+  --bubble-out: #d9f5d0;
+  --warn: #b45309;
+  --warn-soft: #fdecd3;
+  --bad: #b42318;
+  --ok: #157347;
+  --ring: #f04438;
+  --font-display: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1614; --surface: #17211e; --ink: #e5eeea; --muted: #93a39d; --line: #2a3833;
+    --accent: #3fc79c; --accent-soft: #163a2f; --wall: #0b1210; --bubble-in: #1f2c28; --bubble-out: #0f4a3a;
+    --warn: #f5a524; --warn-soft: #3a2a10; --bad: #f97066; --ok: #47cd89; --ring: #f97066; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1614; --surface: #17211e; --ink: #e5eeea; --muted: #93a39d; --line: #2a3833;
+  --accent: #3fc79c; --accent-soft: #163a2f; --wall: #0b1210; --bubble-in: #1f2c28; --bubble-out: #0f4a3a;
+  --warn: #f5a524; --warn-soft: #3a2a10; --bad: #f97066; --ok: #47cd89; --ring: #f97066; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 1.15rem; font-weight: 700; }
+h3 { font-size: .95rem; font-weight: 700; }
+p { margin: 0; }
+.eyebrow { font-family: var(--font-mono); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+header { display: grid; gap: 10px; }
+header p.lede { max-width: 64ch; color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); width: fit-content; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.status[data-mode="claude"] .dot { background: var(--ok); }
+.status[data-mode="offline"] .dot { background: var(--warn); }
+
+.scenarios { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.scenarios .eyebrow { margin-right: 4px; }
+.chip { font: 600 .85rem var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 7px 12px; border-radius: 999px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.chip:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+
+/* Phone */
+.phone { width: 100%; max-width: 380px; margin: 0 auto; height: 680px; border-radius: 34px; border: 10px solid var(--ink); background: var(--wall);
+  display: flex; flex-direction: column; overflow: hidden; position: relative; box-shadow: 0 20px 50px -24px rgba(0,0,0,.45); }
+.appbar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--surface); display: grid; place-items: center; font: 800 .8rem var(--font-display); }
+.appbar .name { font-weight: 600; font-size: .95rem; }
+.appbar .sub { font-size: .74rem; color: var(--muted); }
+.chat { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 8px;
+  background-image: radial-gradient(color-mix(in srgb, var(--muted) 18%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
+.msg { max-width: 82%; padding: 7px 10px 5px; border-radius: 10px; font-size: .88rem; line-height: 1.4; box-shadow: 0 1px 0 rgba(0,0,0,.06); white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.in { background: var(--bubble-in); align-self: flex-start; border-top-left-radius: 2px; }
+.msg.out { background: var(--bubble-out); align-self: flex-end; border-top-right-radius: 2px; }
+.msg time { display: block; text-align: right; font-size: .68rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.msg img { display: block; width: 100%; border-radius: 6px; margin-bottom: 4px; }
+.sys { align-self: center; font-size: .74rem; color: var(--muted); background: var(--surface); padding: 3px 10px; border-radius: 8px; }
+
+.nudge-row { display: flex; justify-content: center; padding: 6px 10px 0; min-height: 0; }
+.nudge { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--ring); border-radius: 999px; padding: 5px 6px 5px 6px;
+  font: 600 .84rem var(--font-body); color: var(--ink); box-shadow: 0 4px 14px -6px rgba(0,0,0,.3); animation: pop .35s ease-out; max-width: 100%; }
+.nudge button.main { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.nudge .ico { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.nudge .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nudge .x { all: unset; cursor: pointer; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
+.nudge .x:hover { background: var(--bg); }
+@keyframes pop { from { transform: translateY(8px) scale(.95); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nudge, .sheet { animation: none !important; } }
+
+.composer { display: flex; gap: 8px; padding: 8px 10px 12px; align-items: center; }
+.composer form { flex: 1; display: flex; gap: 6px; background: var(--surface); border-radius: 999px; padding: 4px 4px 4px 14px; align-items: center; }
+.composer input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: .9rem; color: var(--ink); padding: 6px 0; }
+.composer input:focus-visible { outline: none; }
+.iconbtn { border: 0; background: transparent; color: var(--muted); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
+.send { background: var(--accent); color: var(--surface); width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; flex: none; }
+
+/* Bottom sheet inside the phone */
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 20px 20px 0 0; padding: 16px 16px 18px; display: grid; gap: 12px;
+  box-shadow: 0 -12px 30px -10px rgba(0,0,0,.35); animation: up .28s ease-out; max-height: 88%; overflow-y: auto; }
+@keyframes up { from { transform: translateY(30px); opacity: .5; } to { transform: none; opacity: 1; } }
+.sheet .grab { width: 40px; height: 4px; border-radius: 4px; background: var(--line); margin: 0 auto -4px; }
+.sheet h3 { font-size: 1rem; }
+.sheet ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.sheet li { display: flex; gap: 8px; font-size: .86rem; align-items: flex-start; }
+.sheet li::before { content: ""; width: 16px; height: 16px; flex: none; margin-top: 2px; border-radius: 4px; border: 2px solid var(--accent); }
+.sheet li.ok::before { background: var(--ok); border-color: var(--ok); }
+.sheet li.no::before { background: var(--bad); border-color: var(--bad); }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font: 600 .86rem var(--font-body); border-radius: 10px; padding: 9px 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.btn:disabled { opacity: .55; cursor: progress; }
+.preview { width: 100%; max-height: 200px; object-fit: contain; border-radius: 10px; background: var(--bg); }
+.caption { width: 100%; font: inherit; font-size: .88rem; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--bg); color: var(--ink); }
+.verdict { font-size: .84rem; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); }
+.verdict.retake { background: var(--warn-soft); }
+.toast { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); background: var(--ink); color: var(--bg); font-size: .78rem; padding: 6px 12px; border-radius: 8px; width: max-content; max-width: 90%; text-align: center; }
+
+/* Reasoning panel */
+.panel { display: grid; gap: 16px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.source { font-family: var(--font-mono); font-size: .7rem; padding: 2px 8px; border-radius: 6px; background: var(--bg); color: var(--muted); }
+.source[data-src="claude"] { background: var(--accent-soft); color: var(--accent); }
+.decision { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pill { font: 700 .78rem var(--font-display); padding: 4px 10px; border-radius: 999px; }
+.pill.show { background: var(--accent-soft); color: var(--accent); }
+.pill.hold { background: var(--warn-soft); color: var(--warn); }
+.meter { flex: 1; min-width: 140px; display: grid; gap: 4px; }
+.meter .bar { height: 8px; border-radius: 8px; background: var(--bg); overflow: hidden; }
+.meter .fill { height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+.meter span { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+dl.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: .88rem; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; overflow-wrap: anywhere; }
+.thinking { color: var(--muted); font-style: italic; font-size: .88rem; }
+.log { font-family: var(--font-mono); font-size: .74rem; color: var(--muted); display: grid; gap: 3px; max-height: 140px; overflow-y: auto; }
+
+.compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 700px) { .compare { grid-template-columns: minmax(0, 1fr); } }
+.compare ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: .9rem; }
+.compare .before h3 { color: var(--muted); }
+.compare .after { border-color: var(--accent); }
+.foot { font-size: .8rem; color: var(--muted); max-width: 72ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Chat support concept · prototype</span>
+    <h1>Smart Photo Nudge</h1>
+    <p class="lede">Today's nudge says "Send photo?" whatever the chat is about. In this version, Claude reads the conversation first. It decides whether a photo would actually help, asks for the specific shot the agent needs, and checks the photo before it goes out.</p>
+    <span class="status" id="status" data-mode="pending"><span class="dot"></span><span id="statusText">Connecting to Claude…</span></span>
+  </header>
+
+  <div class="scenarios" role="group" aria-label="Try a scenario">
+    <span class="eyebrow">Try a chat</span>
+    <button class="chip" data-s="damage" aria-pressed="true">Damaged delivery</button>
+    <button class="chip" data-s="size">Wrong size</button>
+    <button class="chip" data-s="payment">Payment failed</button>
+    <button class="chip" data-s="refund">Refund status</button>
+  </div>
+
+  <div class="stage">
+    <div class="phone" id="phone">
+      <div class="appbar">
+        <div class="avatar">SW</div>
+        <div><div class="name">Stridewell Sneakers</div><div class="sub">Business account · replies 9 AM – 9 PM</div></div>
+      </div>
+      <div class="chat" id="chat" aria-live="polite"></div>
+      <div class="nudge-row" id="nudgeRow"></div>
+      <div class="composer">
+        <form id="composer">
+          <input id="msgInput" autocomplete="off" placeholder="Message" aria-label="Message">
+          <button type="button" class="iconbtn" id="camBtn" aria-label="Attach photo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </button>
+        </form>
+        <button class="send" form="composer" type="submit" aria-label="Send">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg>
+        </button>
+      </div>
+      <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+      <input type="file" id="fileGal" accept="image/*" hidden>
+      <div id="sheetHost"></div>
+    </div>
+
+    <div class="panel">
+      <section class="card" aria-labelledby="decTitle">
+        <div class="card-head"><h2 id="decTitle">Should we nudge?</h2><span class="source" id="decSource">waiting</span></div>
+        <div id="decBody"><p class="thinking">Pick a chat or send a message.</p></div>
+      </section>
+      <section class="card" aria-labelledby="photoTitle">
+        <div class="card-head"><h2 id="photoTitle">Photo check before sending</h2><span class="source" id="photoSource">no photo yet</span></div>
+        <div id="photoBody"><p class="thinking">Tap the nudge, then take a photo or use the sample. Claude checks that it shows the problem, isn't blurry, and doesn't expose private details. It also drafts a caption.</p></div>
+      </section>
+      <section class="card" aria-labelledby="logTitle">
+        <h3 id="logTitle">Event log</h3>
+        <div class="log" id="log"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="compare" aria-label="What changes">
+    <div class="card before">
+      <h3>Today: "Send photo?"</h3>
+      <ul>
+        <li>Same generic text in every chat, even when a photo can't help (refund status, opening hours).</li>
+        <li>Doesn't say what to photograph, so customers send the wrong shot and agents have to ask again.</li>
+        <li>Nothing checks the photo for blur, relevance, or a visible address before it's sent.</li>
+        <li>Dismissing it doesn't teach it anything.</li>
+      </ul>
+    </div>
+    <div class="card after">
+      <h3>Prototype: Claude-guided nudge</h3>
+      <ul>
+        <li><strong>Shows only when it helps.</strong> Claude gives a yes or no with a confidence score, and stays silent when a photo isn't useful.</li>
+        <li><strong>Asks for a specific photo</strong>, e.g. "Photo of the damaged box?" instead of "Send photo?".</li>
+        <li><strong>A capture checklist</strong> tells the customer what the agent needs to see.</li>
+        <li><strong>Pre-send check</strong> for relevance, quality, and privacy, with a suggested retake.</li>
+        <li><strong>Auto-drafted caption</strong> with the context the agent needs, so the case moves faster.</li>
+        <li><strong>Respects ×.</strong> Once dismissed, it stays quiet for the rest of that chat.</li>
+      </ul>
+    </div>
+  </section>
+  <p class="foot">Concept prototype. Stridewell Sneakers is a made-up store. When Claude isn't available in this view, keyword rules take over and the panel says so. Photos you pick go to Claude only when you tap "Check photo" and are never stored.</p>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const SCENARIOS = {
+    damage: [
+      { from: "in", text: "Hi Rohan! 👋 Thanks for contacting Stridewell. How can we help with order #SW-48213?" },
+      { from: "out", text: "My shoes arrived today but the box is crushed and the left shoe has a crease across the toe." },
+    ],
+    size: [
+      { from: "in", text: "Hi Meera! How can we help with order #SW-50977?" },
+      { from: "out", text: "I ordered UK 7 but these feel way too small, I think the wrong size was sent." },
+    ],
+    payment: [
+      { from: "in", text: "Hi Arjun! How can we help today?" },
+      { from: "out", text: "My payment failed at checkout but money got deducted from my bank. The app showed an error code." },
+    ],
+    refund: [
+      { from: "in", text: "Hi Kavya! How can we help with order #SW-47102?" },
+      { from: "out", text: "When will my refund for the returned pair reach my account?" },
+    ],
+  };
+
+  let messages = [];
+  let dismissed = false;
+  let decision = null;
+  let photoBlob = null;
+  let photoURL = null;
+  let sample = null;
+  let canImages = false;
+  let ctl = null;
+
+  const now = () => new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const log = (t) => { const d = document.createElement("div"); d.textContent = `${now()}  ${t}`; $("log").prepend(d); };
+
+  function renderChat() {
+    const chat = $("chat");
+    chat.replaceChildren();
+    const sys = document.createElement("div"); sys.className = "sys"; sys.textContent = "Today"; chat.append(sys);
+    for (const m of messages) {
+      const b = document.createElement("div"); b.className = "msg " + m.from;
+      if (m.img) { const i = document.createElement("img"); i.src = m.img; i.alt = m.text || "Photo"; b.append(i); }
+      if (m.text) b.append(document.createTextNode(m.text));
+      const t = document.createElement("time"); t.textContent = m.time || now(); b.append(t);
+      chat.append(b);
+    }
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  /* ---------- Decision: should we nudge, and for what? ---------- */
+  function heuristic(text) {
+    const t = text.toLowerCase();
+    if (/(damag|crush|broke|torn|tear|dent|crack|crease|scratch|stain)/.test(t))
+      return { show: true, confidence: 0.86, photo_type: "the damaged item and box", nudge_text: "Photo of the damage?", why: "The customer reports physical damage, and agents need visual proof to approve a replacement.", checklist: ["Show the whole item, then a close-up of the damage", "Include the shipping label if the box is damaged", "Use daylight and avoid flash glare"], suggested_caption: "Damage on arrival for my order" };
+    if (/(size|small|big|tight|loose|wrong item|different|colour|color)/.test(t))
+      return { show: true, confidence: 0.78, photo_type: "the size label inside the shoe", nudge_text: "Photo of the size label?", why: "A wrong-size claim is confirmed quickest with the label inside the tongue.", checklist: ["Pull the tongue forward so the label is readable", "Keep the label in focus", "Add the box label if you have it"], suggested_caption: "Size label of the pair I received" };
+    if (/(payment|deduct|charged|error|failed|transaction|upi)/.test(t))
+      return { show: true, confidence: 0.72, photo_type: "a screenshot of the error or bank debit", nudge_text: "Screenshot of the error?", why: "The error code or transaction ID lets the agent trace the payment.", checklist: ["Capture the error code or transaction ID", "Crop out your balance and card number", "Include the date and time"], suggested_caption: "Payment error screenshot" };
+    return { show: false, confidence: 0.18, photo_type: "", nudge_text: "", why: "This is a status question. A photo wouldn't help the agent, so the nudge stays hidden.", checklist: [], suggested_caption: "" };
+  }
+
+  function transcript() {
+    return messages.filter(m => m.text).slice(-10).map(m => `${m.from === "out" ? "Customer" : "Business"}: ${m.text}`).join("\n");
+  }
+
+  async function decide() {
+    if (dismissed) { renderDecision(null, "dismissed"); return; }
+    ctl?.abort();
+    const last = [...messages].reverse().find(m => m.from === "out" && m.text);
+    if (!last) return;
+    if (!sample) { applyDecision(heuristic(last.text), "rules"); return; }
+    $("decSource").textContent = "asking Claude"; $("decSource").dataset.src = "";
+    $("decBody").innerHTML = '<p class="thinking">Claude is reading the chat…</p>';
+    ctl = new AbortController();
+    const prompt = `You decide whether a customer-support chat app should show a small "send a photo" nudge above the customer's keyboard.
+Show it ONLY if a photo or screenshot from the customer would clearly help the agent resolve the issue faster (damage, wrong item/size, defects, error screens, proof of delivery problems). Do NOT show it for status questions, policy questions, greetings, or anything a photo can't help with.
+
+Chat (most recent last):
+${transcript()}
+
+Reply with only a JSON object:
+{"show": boolean, "confidence": number 0-1, "photo_type": "what exactly to photograph, short", "nudge_text": "max 5 words, ends with ?, e.g. 'Photo of the damage?'", "why": "one sentence for the product team", "checklist": ["up to 3 short capture tips specific to this issue"], "suggested_caption": "short caption in the customer's voice, max 12 words"}`;
+    try {
+      const d = await sample.json(prompt, { modelTier: "quick", signal: ctl.signal });
+      if (!d || typeof d.show !== "boolean") throw { code: "invalid_json" };
+      applyDecision(d, "claude");
+    } catch (e) {
+      if (e?.code === "cancelled") return;
+      if (e?.code === "not_granted" || e?.code === "sampling_disabled") { sample = null; setStatus("offline", "Claude not allowed. Using keyword rules."); }
+      log(`Claude unavailable (${e?.code || "error"}), used keyword rules`);
+      applyDecision(heuristic(last.text), "rules");
+    }
+  }
+
+  function applyDecision(d, src) {
+    decision = d;
+    log(`${src === "claude" ? "Claude" : "Rules"}: ${d.show ? `nudge "${d.nudge_text}"` : "no nudge"} (${Math.round((d.confidence || 0) * 100)}%)`);
+    renderDecision(d, src);
+    renderNudge();
+  }
+
+  function renderDecision(d, src) {
+    const s = $("decSource");
+    if (src === "dismissed") {
+      s.textContent = "paused"; s.dataset.src = "";
+      $("decBody").innerHTML = '<p class="thinking">The customer dismissed the nudge, so it stays quiet for the rest of this chat. Pick another chat to reset.</p>';
+      return;
+    }
+    s.textContent = src === "claude" ? "decided by Claude" : "keyword rules"; s.dataset.src = src;
+    const body = $("decBody"); body.replaceChildren();
+    const row = document.createElement("div"); row.className = "decision";
+    const pill = document.createElement("span"); pill.className = "pill " + (d.show ? "show" : "hold"); pill.textContent = d.show ? "Show nudge" : "Stay hidden";
+    const meter = document.createElement("div"); meter.className = "meter";
+    const pct = Math.round(Math.max(0, Math.min(1, Number(d.confidence) || 0)) * 100);
+    meter.innerHTML = `<div class="bar"><div class="fill"></div></div><span>Photo would help: ${pct}%</span>`;
+    row.append(pill, meter); body.append(row);
+    requestAnimationFrame(() => { meter.querySelector(".fill").style.width = pct + "%"; });
+    const dl = document.createElement("dl"); dl.className = "kv";
+    const add = (k, v) => { if (!v) return; const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; dl.append(dt, dd); };
+    add("Why", d.why);
+    if (d.show) { add("Nudge text", `"${d.nudge_text}"`); add("Ask for", d.photo_type); add("Checklist", (d.checklist || []).join(" · ")); add("Draft caption", d.suggested_caption); }
+    body.append(dl);
+  }
+
+  function renderNudge() {
+    const row = $("nudgeRow"); row.replaceChildren();
+    if (!decision?.show || dismissed) return;
+    const n = document.createElement("div"); n.className = "nudge";
+    const main = document.createElement("button"); main.className = "main"; main.setAttribute("aria-label", decision.nudge_text + " Open photo guide");
+    main.innerHTML = '<span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>';
+    const txt = document.createElement("span"); txt.className = "txt"; txt.textContent = decision.nudge_text || "Send photo?"; main.append(txt);
+    main.onclick = openGuide;
+    const x = document.createElement("button"); x.className = "x"; x.setAttribute("aria-label", "Dismiss photo suggestion"); x.textContent = "✕";
+    x.onclick = () => { dismissed = true; row.replaceChildren(); toast("Got it. No more photo suggestions in this chat."); log("Customer dismissed the nudge, paused for this chat"); renderDecision(null, "dismissed"); };
+    n.append(main, x); row.append(n);
+  }
+
+  function toast(t) {
+    const el = document.createElement("div"); el.className = "toast"; el.textContent = t; $("phone").append(el);
+    setTimeout(() => el.remove(), 2600);
+  }
+
+  /* ---------- Sheet: capture guide → preview & check ---------- */
+  function closeSheet() { $("sheetHost").replaceChildren(); }
+  function sheet(children) {
+    closeSheet();
+    const s = document.createElement("div"); s.className = "sheet"; s.setAttribute("role", "dialog"); s.setAttribute("aria-label", "Photo");
+    const g = document.createElement("div"); g.className = "grab"; s.append(g, ...children); $("sheetHost").append(s);
+    return s;
+  }
+  function btn(label, cls, fn) { const b = document.createElement("button"); b.className = "btn " + (cls || ""); b.textContent = label; b.onclick = fn; return b; }
+
+  function openGuide() {
+    log("Customer opened the photo guide");
+    const d = decision || heuristic("");
+    const h = document.createElement("h3"); h.textContent = d.show ? `Send ${d.photo_type}` : "Send a photo";
+    const p = document.createElement("p"); p.style.fontSize = ".84rem"; p.style.color = "var(--muted)"; p.textContent = "So the agent can sort this out in one go:";
+    const ul = document.createElement("ul");
+    for (const c of (d.checklist?.length ? d.checklist : ["Keep the subject in focus", "Use good light"])) { const li = document.createElement("li"); li.textContent = c; ul.append(li); }
+    const row = document.createElement("div"); row.className = "btnrow";
+    row.append(btn("Take photo", "primary", () => $("fileCam").click()), btn("Gallery", "", () => $("fileGal").click()), btn("Use sample photo", "", useSample), btn("Not now", "", closeSheet));
+    sheet([h, p, ul, row]);
+  }
+
+  function onFile(e) {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    setPhoto(f, f.name || "photo");
+  }
+
+  function useSample() {
+    const c = document.createElement("canvas"); c.width = 640; c.height = 480; const x = c.getContext("2d");
+    const g = x.createLinearGradient(0, 0, 0, 480); g.addColorStop(0, "#d9d4cc"); g.addColorStop(1, "#b9b2a6"); x.fillStyle = g; x.fillRect(0, 0, 640, 480);
+    // crushed shoe box
+    x.fillStyle = "#c8742f"; x.beginPath(); x.moveTo(90, 170); x.lineTo(540, 150); x.lineTo(560, 360); x.lineTo(300, 330); x.lineTo(250, 380); x.lineTo(80, 370); x.closePath(); x.fill();
+    x.fillStyle = "#a95c20"; x.beginPath(); x.moveTo(250, 380); x.lineTo(300, 330); x.lineTo(330, 300); x.lineTo(290, 395); x.closePath(); x.fill();
+    x.strokeStyle = "#5b2e0c"; x.lineWidth = 4; x.beginPath(); x.moveTo(250, 160); x.lineTo(300, 330); x.moveTo(300, 330); x.lineTo(380, 290); x.stroke();
+    x.fillStyle = "#f4f1ea"; x.fillRect(380, 190, 130, 70); x.fillStyle = "#222"; x.font = "bold 16px sans-serif"; x.fillText("STRIDEWELL", 392, 215);
+    x.font = "13px monospace"; x.fillText("#SW-48213", 392, 238); x.fillText("UK 9 · WHT", 392, 254);
+    x.fillStyle = "#fff"; x.font = "bold 18px sans-serif"; x.fillText("Sample photo: crushed delivery box", 20, 455);
+    c.toBlob((b) => setPhoto(b, "sample"), "image/jpeg", 0.88);
+  }
+
+  function setPhoto(blob, name) {
+    photoBlob = blob;
+    if (photoURL) URL.revokeObjectURL(photoURL);
+    photoURL = URL.createObjectURL(blob);
+    log(`Photo selected (${name})`);
+    const img = document.createElement("img"); img.className = "preview"; img.src = photoURL; img.alt = "Selected photo";
+    const verdict = document.createElement("div"); verdict.className = "verdict"; verdict.id = "verdict";
+    verdict.textContent = sample && canImages ? "Checking the photo with Claude…" : "Claude can't see images in this view. Review the photo yourself.";
+    const cap = document.createElement("input"); cap.className = "caption"; cap.id = "capInput"; cap.setAttribute("aria-label", "Caption"); cap.value = decision?.suggested_caption || "";
+    const row = document.createElement("div"); row.className = "btnrow";
+    row.append(btn("Send", "primary", sendPhoto), btn("Retake", "", openGuide));
+    sheet([img, verdict, cap, row]);
+    $("photoSource").textContent = "photo selected"; $("photoSource").dataset.src = "";
+    $("photoBody").innerHTML = "";
+    if (sample && canImages) checkPhoto(); else renderPhotoUnavailable();
+  }
+
+  function renderPhotoUnavailable() {
+    $("photoSource").textContent = "not checked";
+    $("photoBody").innerHTML = '<p class="thinking">Image checks need Claude with image access in this view. The customer can still send the photo.</p>';
+  }
+
+  async function checkPhoto() {
+    const blob = photoBlob;
+    $("photoBody").innerHTML = '<p class="thinking">Claude is looking at the photo…</p>';
+    $("photoSource").textContent = "asking Claude";
+    const prompt = `A customer is about to send this photo in a support chat.
+Chat so far:
+${transcript()}
+
+What the agent asked for: ${decision?.photo_type || "a photo relevant to the issue"}.
+
+Check the image and reply with only a JSON object:
+{"verdict": "ready" | "retake", "relevant": boolean, "shows": "what the photo shows, one short sentence", "quality": "good" | "blurry" | "too dark" | "cropped" | "glare", "issues": ["short problems, empty if none"], "privacy": ["visible private details like full address, phone number, faces, card numbers; empty if none"], "caption": "helpful caption for the agent in the customer's voice, max 15 words"}`;
+    try {
+      const r = await sample.json(prompt, { images: blob, modelTier: "default" });
+      if (blob !== photoBlob) return;
+      renderPhotoCheck(r);
+    } catch (e) {
+      if (blob !== photoBlob) return;
+      log(`Photo check unavailable (${e?.code || "error"})`);
+      if (e?.code === "images_unavailable") canImages = false;
+      renderPhotoUnavailable();
+      const v = $("verdict"); if (v) v.textContent = "Couldn't check the photo. Review it yourself before sending.";
+    }
+  }
+
+  function renderPhotoCheck(r) {
+    const ready = r?.verdict === "ready";
+    log(`Claude photo check: ${ready ? "ready to send" : "suggests a retake"}`);
+    $("photoSource").textContent = "checked by Claude"; $("photoSource").dataset.src = "claude";
+    const body = $("photoBody"); body.replaceChildren();
+    const row = document.createElement("div"); row.className = "decision";
+    const pill = document.createElement("span"); pill.className = "pill " + (ready ? "show" : "hold"); pill.textContent = ready ? "Ready to send" : "Suggest retake";
+    row.append(pill); body.append(row);
+    const dl = document.createElement("dl"); dl.className = "kv";
+    const add = (k, v) => { if (!v) return; const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; dl.append(dt, dd); };
+    add("Shows", r?.shows); add("Relevant", r?.relevant ? "Yes" : "No"); add("Quality", r?.quality);
+    add("Issues", (r?.issues || []).join(" · ") || "None");
+    add("Privacy", (r?.privacy || []).join(" · ") || "Nothing sensitive spotted");
+    add("Caption", r?.caption);
+    body.append(dl);
+    const v = $("verdict");
+    if (v) {
+      v.className = "verdict" + (ready ? "" : " retake");
+      const bits = [ready ? "Looks good. This shows what the agent needs." : "You might want to retake this."];
+      if (r?.issues?.length) bits.push(r.issues.join("; ") + ".");
+      if (r?.privacy?.length) bits.push("Heads up, visible: " + r.privacy.join(", ") + ".");
+      v.textContent = bits.join(" ");
+    }
+    const cap = $("capInput"); if (cap && r?.caption) cap.value = r.caption;
+  }
+
+  function sendPhoto() {
+    const cap = $("capInput")?.value.trim() || "";
+    messages.push({ from: "out", img: photoURL, text: cap, time: now() });
+    photoURL = null; photoBlob = null;
+    closeSheet(); decision = { ...decision, show: false }; renderNudge(); renderChat();
+    log("Photo sent with caption");
+    setTimeout(() => { messages.push({ from: "in", text: "Thanks! That photo has everything we need. We've raised a replacement and you'll get an update within 24 hours. 🙌", time: now() }); renderChat(); }, 900);
+  }
+
+  /* ---------- Composer & scenarios ---------- */
+  $("composer").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("msgInput").value.trim(); if (!v) return;
+    messages.push({ from: "out", text: v, time: now() }); $("msgInput").value = ""; renderChat();
+    log("Customer sent a message");
+    decide();
+  });
+  $("camBtn").onclick = openGuide;
+  $("fileCam").onchange = onFile; $("fileGal").onchange = onFile;
+
+  function loadScenario(key, ask) {
+    document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.s === key)));
+    messages = SCENARIOS[key].map((m, i) => ({ ...m, time: `10:${String(44 + i).padStart(2, "0")} am` }));
+    dismissed = false; decision = null; closeSheet(); renderChat(); renderNudge();
+    $("photoSource").textContent = "no photo yet"; $("photoSource").dataset.src = "";
+    log(`Loaded chat: ${key}`);
+    if (ask) decide();
+    else { const last = messages[messages.length - 1]; applyDecision(heuristic(last.text), "rules"); }
+  }
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => loadScenario(c.dataset.s, true));
+
+  function setStatus(mode, text) { $("status").dataset.mode = mode; $("statusText").textContent = text; }
+
+  loadScenario("damage", false);
+
+  (async () => {
+    try { sample = window.claude ? await window.claude.use("sample") : null; } catch { sample = null; }
+    if (!sample) { setStatus("offline", "Claude isn't available here. Keyword rules are running the demo."); return; }
+    try { const lim = await sample.limits(); canImages = !!lim?.images; } catch { canImages = false; }
+    setStatus("claude", canImages ? "Claude connected. Pick a chat or send a message to ask it." : "Claude connected (text only, no photo checks).");
+  })();
+})();
+</script>
